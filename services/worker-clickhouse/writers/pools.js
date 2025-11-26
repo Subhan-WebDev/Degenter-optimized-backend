@@ -56,7 +56,7 @@ export async function flushPools() {
 export async function handlePoolEvent(e) {
   try {
     const meta = await getPoolMeta(e.pair_contract);
-    if (!meta) { warn('[ch/pool] missing pool meta', e.pair_contract); return false; }
+    if (!meta) { warn('[ch/pool] missing pool meta', e.pair_contract); return; }
 
     pushToken({ token_id: meta.base_token_id, denom: meta.base_denom, exponent: meta.base_exp }, e.created_at);
     pushToken({ token_id: meta.quote_token_id, denom: meta.quote_denom, exponent: meta.quote_exp }, e.created_at);
@@ -78,7 +78,6 @@ export async function handlePoolEvent(e) {
     });
 
     info('[ch] pool recorded', e.pair_contract, meta.pool_id);
-    return true;
   } catch (err) {
     warn('[ch/pool]', err?.message || err);
     return false;

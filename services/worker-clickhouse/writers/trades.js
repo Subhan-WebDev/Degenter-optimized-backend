@@ -13,9 +13,6 @@ const tradesQueue = new BatchQueue({
   flushFn: flushTradesBatch
 });
 
-const RETRY_DELAY_MS = Number(process.env.CLICKHOUSE_META_RETRY_MS || 500);
-const MAX_META_RETRIES = Number(process.env.CLICKHOUSE_META_RETRIES || 120); // ~1 min default
-
 function asDate(v) {
   if (!v) return new Date();
   const d = new Date(v);
@@ -67,14 +64,7 @@ async function flushTradesBatch(events) {
   for (const e of events) {
     try {
       const meta = await getPoolMeta(e.pair_contract);
-      if (!meta) {
-        if ((e._metaRetries || 0) < MAX_META_RETRIES) {
-          setTimeout(() => tradesQueue.push({ ...e, _metaRetries: (e._metaRetries || 0) + 1 }), RETRY_DELAY_MS);
-        } else {
-          warn('[ch/trade] missing pool meta (dropped)', e.pair_contract);
-        }
-        continue;
-      }
+      if (!meta) { warn('[ch/trade] missing pool meta', e.pair_contract); continue; }
 
       const direction = classifyDirection(e.offer_asset_denom, meta.quote_denom);
 

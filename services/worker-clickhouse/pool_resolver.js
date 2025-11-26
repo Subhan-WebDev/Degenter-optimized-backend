@@ -3,7 +3,7 @@ import { poolWithTokensCached } from '../../common/core/pools_cache.js';
 
 const CACHE_MAX = Number(process.env.POOL_CACHE_MAX || 2000);
 const RETRY_MS = Number(process.env.POOL_ID_RETRY_MS || 500);
-const MAX_RETRIES = Number(process.env.POOL_ID_MAX_RETRIES || 120); // wait up to ~1m by default
+const MAX_RETRIES = Number(process.env.POOL_ID_MAX_RETRIES || 20);
 const KEY_PREFIX = process.env.REDIS_POOL_PREFIX || 'pool_id:';
 
 let redis = null;
