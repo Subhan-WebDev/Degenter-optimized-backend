@@ -1,4 +1,4 @@
-import { chInsertJSON } from '../../../common/db-clickhouse.js';
+import { chInsertJSON, toChDateTime } from '../../../common/db-clickhouse.js';
 import BatchQueue from '../../../common/batch.js';
 import { classifyDirection } from '../../../common/core/parse.js';
 import { priceFromReserves_UZIGQuote } from '../../../common/core/prices.js';
@@ -22,10 +22,6 @@ function asDate(v) {
   return isNaN(d.getTime()) ? new Date() : d;
 }
 
-function asIsoDate(v) {
-  return asDate(v).toISOString();
-}
-
 function toDecimal(v) {
   if (v === null || v === undefined) return '0';
   return String(v);
@@ -40,7 +36,7 @@ function nextTradeId(e) {
 
 function bucketStart(ts) {
   const t = asDate(ts).getTime();
-  return new Date(Math.floor(t / 60000) * 60000).toISOString();
+  return toChDateTime(Math.floor(t / 60000) * 60000);
 }
 
 function computePrice(meta, e) {
@@ -107,7 +103,7 @@ async function flushTradesBatch(events) {
         tx_hash: e.tx_hash || '',
         signer: e.signer || '',
         msg_index: Number(e.msg_index || 0),
-        created_at: asIsoDate(e.created_at)
+        created_at: toChDateTime(e.created_at)
       });
 
       // pool_state snapshot for analytics
@@ -122,7 +118,7 @@ async function flushTradesBatch(events) {
           pool_id: meta.pool_id,
           reserve_base_base: toDecimal(baseRes),
           reserve_quote_base: toDecimal(quoteRes),
-          updated_at: asIsoDate(e.created_at)
+          updated_at: toChDateTime(e.created_at)
         });
       }
 
@@ -132,7 +128,7 @@ async function flushTradesBatch(events) {
         const bucket = bucketStart(e.created_at);
         ohlcvRows.push({
           pool_id: meta.pool_id,
-        bucket_start: bucket,
+          bucket_start: bucket,
           open: price,
           high: price,
           low: price,
@@ -146,7 +142,7 @@ async function flushTradesBatch(events) {
           pool_id: meta.pool_id,
           token_id: meta.base_token_id,
           price_in_zig: price,
-          ts: asIsoDate(e.created_at)
+          ts: toChDateTime(e.created_at)
         });
       }
     } catch (err) {

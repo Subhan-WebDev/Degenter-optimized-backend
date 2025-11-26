@@ -27,8 +27,15 @@ export async function chPing() {
   info('[clickhouse] ping ok', chInfo());
 }
 
+// Format to ClickHouse-friendly DateTime64: 'YYYY-MM-DD HH:MM:SS.mmm' (UTC)
+export function toChDateTime(v) {
+  const d = v instanceof Date ? v : new Date(v);
+  const safe = isNaN(d.getTime()) ? new Date() : d;
+  return safe.toISOString().slice(0, -1).replace('T', ' ');
+}
+
 function sanitizeValue(v) {
-  if (v instanceof Date) return v.toISOString();
+  if (v instanceof Date) return toChDateTime(v);
   if (Array.isArray(v)) return v.map((x) => sanitizeValue(x));
   if (v && typeof v === 'object') {
     return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, sanitizeValue(val)]));

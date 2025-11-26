@@ -60,7 +60,8 @@ export async function getPoolMeta(pair_contract) {
 
   let attempts = 0;
   while (attempts < MAX_RETRIES) {
-    const meta = await poolWithTokensCached(pair_contract);
+    // skipNegativeCache=true so we keep retrying right after pool creation
+    const meta = await poolWithTokensCached(pair_contract, { skipNegativeCache: true });
     if (meta && meta.pool_id) {
       remember(poolIdCache, pair_contract, meta.pool_id);
       remember(poolMetaCache, pair_contract, meta);

@@ -1,6 +1,6 @@
 
 // services/worker-clickhouse/writers/pools.js
-import { chInsertJSON } from '../../../common/db-clickhouse.js';
+import { chInsertJSON, toChDateTime } from '../../../common/db-clickhouse.js';
 import BatchQueue from '../../../common/batch.js';
 import { info, warn } from '../../../common/log.js';
 import { getPoolMeta } from '../pool_resolver.js';
@@ -22,12 +22,6 @@ const poolsQueue = new BatchQueue({
   }
 });
 
-function asIsoDate(v) {
-  const d = new Date(v);
-  const safe = isNaN(d.getTime()) ? new Date() : d;
-  return safe.toISOString();
-}
-
 function pushToken(meta, created_at) {
   if (!meta?.token_id || tokenSeen.has(meta.token_id)) return;
   tokenSeen.add(meta.token_id);
@@ -46,7 +40,7 @@ function pushToken(meta, created_at) {
     max_supply_base: '0',
     total_supply_base: '0',
     description: '',
-    created_at: asIsoDate(created_at)
+    created_at: toChDateTime(created_at)
   });
 }
 
@@ -72,7 +66,7 @@ export async function handlePoolEvent(e) {
       is_uzig_quote: meta.is_uzig_quote ? 1 : 0,
       factory_contract: process.env.FACTORY_ADDR || '',
       router_contract: process.env.ROUTER_ADDR || '',
-      created_at: asIsoDate(e.created_at),
+      created_at: toChDateTime(e.created_at),
       created_height: Number(e.height || 0),
       created_tx_hash: e.tx_hash || '',
       signer: e.signer || ''

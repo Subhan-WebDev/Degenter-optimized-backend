@@ -1,5 +1,5 @@
 // services/worker-clickhouse/writers/prices.js
-import { chInsertJSON } from '../../../common/db-clickhouse.js';
+import { chInsertJSON, toChDateTime } from '../../../common/db-clickhouse.js';
 import BatchQueue from '../../../common/batch.js';
 import { priceFromReserves_UZIGQuote } from '../../../common/core/prices.js';
 import { warn } from '../../../common/log.js';
@@ -14,12 +14,6 @@ const priceQueue = new BatchQueue({
     }
   }
 });
-
-function asIsoDate(v) {
-  const d = new Date(v);
-  const safe = isNaN(d.getTime()) ? new Date() : d;
-  return safe.toISOString();
-}
 
 export function pushTick(row) {
   priceQueue.push(row);
@@ -46,7 +40,7 @@ export async function handlePriceSnapshot(e) {
         pool_id: meta.pool_id,
         token_id: meta.base_token_id,
         price_in_zig: price,
-        ts: asIsoDate(e.at || e.created_at)
+        ts: toChDateTime(e.at || e.created_at)
       });
     }
   } catch (err) {

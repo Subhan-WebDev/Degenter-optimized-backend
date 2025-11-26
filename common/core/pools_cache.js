@@ -70,9 +70,9 @@ export async function preloadPools() {
  *   - null     => known-missing for a short time (negative cached)
  *   - fetch DB => if uncached; caches result or negative-caches
  */
-export async function poolWithTokensCached(pair_contract) {
+export async function poolWithTokensCached(pair_contract, { skipNegativeCache = false } = {}) {
   const neg = NEG.get(pair_contract);
-  if (neg && neg > now()) return null; // recent known-miss
+  if (!skipNegativeCache && neg && neg > now()) return null; // recent known-miss
 
   const hit = POS.get(pair_contract);
   if (hit) {
@@ -94,7 +94,9 @@ export async function poolWithTokensCached(pair_contract) {
   }
 
   // Miss → short negative cache to avoid DB spam
-  NEG.set(pair_contract, now() + POOLS_NEG_TTL_MS);
-  debug('[pools-cache] miss', { pair_contract });
+  if (!skipNegativeCache) {
+    NEG.set(pair_contract, now() + POOLS_NEG_TTL_MS);
+    debug('[pools-cache] miss', { pair_contract });
+  }
   return null;
 }
