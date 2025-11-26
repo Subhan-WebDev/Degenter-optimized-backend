@@ -54,7 +54,7 @@ export async function upsertPool({
   });
 
   info('POOL UPSERT:', pairContract, `${baseDenom}/${quoteDenom}`, pairType, 'pool_id=', pool_id);
-  return pool_id;
+  return { pool_id, base_token_id: baseId, quote_token_id: quoteId };
 }
 
 /** 🔁 Back-compat for older imports */
