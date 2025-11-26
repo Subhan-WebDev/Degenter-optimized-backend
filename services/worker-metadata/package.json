@@ -1,0 +1,13 @@
+﻿{
+  "name": "worker-metadata",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "undici": "^6.19.8",
+    "redis": "^4.6.13"
+  }
+}

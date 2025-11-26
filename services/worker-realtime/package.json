@@ -1,0 +1,7 @@
+﻿{
+  "name": "worker-realtime",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" }
+}

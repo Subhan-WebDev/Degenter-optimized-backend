@@ -1,0 +1,7 @@
+﻿{
+  "name": "api-websocket",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" }
+}
