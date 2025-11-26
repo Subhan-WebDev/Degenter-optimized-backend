@@ -6,6 +6,7 @@ process.env.SVC_NAME = process.env.SVC_NAME || 'worker-clickhouse';
 import { createRedisClient } from '../../common/redis-client.js';
 import { createConsumerGroup, readLoop } from '../../common/streams.js';
 import { info, warn, err } from '../../common/log.js';
+import { chPing, chInfo } from '../../common/db-clickhouse.js';
 
 import { handlePoolEvent, flushPools } from './writers/pools.js';
 import { handleSwapEvent, handleLiquidityEvent, flushTrades } from './writers/trades.js';
@@ -57,6 +58,13 @@ async function makeReader(stream, handler) {
 
 async function main() {
   await redisConnect();
+  info('clickhouse config', chInfo());
+  try {
+    await chPing();
+  } catch (e) {
+    err('[clickhouse] ping failed', e?.message || e);
+    throw e;
+  }
   initPoolResolver(redis);
 
   await Promise.all([

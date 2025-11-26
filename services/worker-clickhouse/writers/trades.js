@@ -2,7 +2,7 @@ import { chInsertJSON } from '../../../common/db-clickhouse.js';
 import BatchQueue from '../../../common/batch.js';
 import { classifyDirection } from '../../../common/core/parse.js';
 import { priceFromReserves_UZIGQuote } from '../../../common/core/prices.js';
-import { warn } from '../../../common/log.js';
+import { info, warn } from '../../../common/log.js';
 import { getPoolMeta } from '../pool_resolver.js';
 import { pushPoolState } from './pool_state.js';
 import { pushTick } from './prices.js';
@@ -12,6 +12,9 @@ const tradesQueue = new BatchQueue({
   maxWaitMs: Number(process.env.CLICKHOUSE_TRADE_FLUSH_MS || 2000),
   flushFn: flushTradesBatch
 });
+
+const RETRY_DELAY_MS = Number(process.env.CLICKHOUSE_META_RETRY_MS || 500);
+const MAX_META_RETRIES = Number(process.env.CLICKHOUSE_META_RETRIES || 120); // ~1 min default
 
 function asDate(v) {
   if (!v) return new Date();
@@ -60,11 +63,23 @@ async function flushTradesBatch(events) {
 
   const tradeRows = [];
   const ohlcvRows = [];
+  let queuedForRetry = 0;
 
   for (const e of events) {
     try {
       const meta = await getPoolMeta(e.pair_contract);
-      if (!meta) { warn('[ch/trade] missing pool meta', e.pair_contract); continue; }
+      if (!meta) {
+        if ((e._metaRetries || 0) < MAX_META_RETRIES) {
+          if ((e._metaRetries || 0) === 0 || (e._metaRetries + 1) % 10 === 0) {
+            warn('[ch/trade] waiting for pool metadata', { pair_contract: e.pair_contract, attempt: (e._metaRetries || 0) + 1 });
+          }
+          setTimeout(() => tradesQueue.push({ ...e, _metaRetries: (e._metaRetries || 0) + 1 }), RETRY_DELAY_MS);
+          queuedForRetry++;
+        } else {
+          warn('[ch/trade] missing pool meta (dropped)', e.pair_contract);
+        }
+        continue;
+      }
 
       const direction = classifyDirection(e.offer_asset_denom, meta.quote_denom);
 
@@ -133,6 +148,10 @@ async function flushTradesBatch(events) {
     } catch (err) {
       warn('[ch/trade/flush]', err?.message || err);
     }
+  }
+
+  if (queuedForRetry) {
+    info('[ch/trade] queued for meta retry', { count: queuedForRetry });
   }
 
   if (tradeRows.length) await chInsertJSON({ table: 'trades', rows: tradeRows });
