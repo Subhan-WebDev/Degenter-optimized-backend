@@ -30,10 +30,18 @@ export async function chPing() {
 export async function chInsertJSON({ table, rows, format = 'JSONEachRow' }) {
   if (!rows?.length) return;
   const started = Date.now();
+  // Serialize rows ourselves to guarantee JSONEachRow payload strings wrap
+  // Date/DateTime values (created_at, bucket_start, etc.) in quotes. The
+  // ClickHouse JS client accepts either structured objects or preformatted
+  // strings; providing newline-delimited JSON prevents any implicit type
+  // conversion from stripping quotes around ISO timestamps.
+  const payload = Array.isArray(rows)
+    ? rows.map((r) => JSON.stringify(r)).join('\n') + '\n'
+    : rows;
   try {
     await CH.insert({
       table,
-      values: rows,
+      values: payload,
       format, // JSONEachRow
     });
     info('[clickhouse] insert', { table, rows: rows.length, ms: Date.now() - started });
