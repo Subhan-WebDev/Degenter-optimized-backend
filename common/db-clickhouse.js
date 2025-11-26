@@ -27,26 +27,42 @@ export async function chPing() {
   info('[clickhouse] ping ok', chInfo());
 }
 
+function sanitizeValue(v) {
+  if (v instanceof Date) return v.toISOString();
+  if (Array.isArray(v)) return v.map((x) => sanitizeValue(x));
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, sanitizeValue(val)]));
+  }
+  return v;
+}
+
+function normalizeRows(rows) {
+  if (!rows) return [];
+  if (typeof rows === 'string') {
+    return rows
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => sanitizeValue(JSON.parse(line)));
+  }
+  if (Array.isArray(rows)) return rows.map((r) => sanitizeValue(r));
+  if (typeof rows === 'object') return [sanitizeValue(rows)];
+  return [];
+}
+
 export async function chInsertJSON({ table, rows, format = 'JSONEachRow' }) {
-  if (!rows?.length) return;
+  const normalized = normalizeRows(rows);
+  if (!normalized.length) return;
   const started = Date.now();
-  // Serialize rows ourselves to guarantee JSONEachRow payload strings wrap
-  // Date/DateTime values (created_at, bucket_start, etc.) in quotes. The
-  // ClickHouse JS client accepts either structured objects or preformatted
-  // strings; providing newline-delimited JSON prevents any implicit type
-  // conversion from stripping quotes around ISO timestamps.
-  const payload = Array.isArray(rows)
-    ? rows.map((r) => JSON.stringify(r)).join('\n') + '\n'
-    : rows;
   try {
     await CH.insert({
       table,
-      values: payload,
+      values: normalized,
       format, // JSONEachRow
     });
-    info('[clickhouse] insert', { table, rows: rows.length, ms: Date.now() - started });
+    info('[clickhouse] insert', { table, rows: normalized.length, ms: Date.now() - started });
   } catch (e) {
-    warn('[clickhouse] insert failed', { table, rows: rows.length, err: e?.message || e });
+    warn('[clickhouse] insert failed', { table, rows: normalized.length, err: e?.message || e });
     throw e;
   }
 }
