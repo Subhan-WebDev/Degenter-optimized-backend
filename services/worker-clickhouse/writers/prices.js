@@ -15,9 +15,10 @@ const priceQueue = new BatchQueue({
   }
 });
 
-function asDate(v) {
+function asIsoDate(v) {
   const d = new Date(v);
-  return isNaN(d.getTime()) ? new Date() : d;
+  const safe = isNaN(d.getTime()) ? new Date() : d;
+  return safe.toISOString();
 }
 
 export function pushTick(row) {
@@ -45,7 +46,7 @@ export async function handlePriceSnapshot(e) {
         pool_id: meta.pool_id,
         token_id: meta.base_token_id,
         price_in_zig: price,
-        ts: asDate(e.at || e.created_at)
+        ts: asIsoDate(e.at || e.created_at)
       });
     }
   } catch (err) {

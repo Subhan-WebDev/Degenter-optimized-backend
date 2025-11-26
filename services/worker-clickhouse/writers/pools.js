@@ -22,9 +22,10 @@ const poolsQueue = new BatchQueue({
   }
 });
 
-function asDate(v) {
+function asIsoDate(v) {
   const d = new Date(v);
-  return isNaN(d.getTime()) ? new Date() : d;
+  const safe = isNaN(d.getTime()) ? new Date() : d;
+  return safe.toISOString();
 }
 
 function pushToken(meta, created_at) {
@@ -45,7 +46,7 @@ function pushToken(meta, created_at) {
     max_supply_base: '0',
     total_supply_base: '0',
     description: '',
-    created_at: asDate(created_at)
+    created_at: asIsoDate(created_at)
   });
 }
 
@@ -71,7 +72,7 @@ export async function handlePoolEvent(e) {
       is_uzig_quote: meta.is_uzig_quote ? 1 : 0,
       factory_contract: process.env.FACTORY_ADDR || '',
       router_contract: process.env.ROUTER_ADDR || '',
-      created_at: asDate(e.created_at),
+      created_at: asIsoDate(e.created_at),
       created_height: Number(e.height || 0),
       created_tx_hash: e.tx_hash || '',
       signer: e.signer || ''
