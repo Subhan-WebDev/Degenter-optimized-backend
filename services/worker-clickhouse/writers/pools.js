@@ -80,5 +80,6 @@ export async function handlePoolEvent(e) {
     info('[ch] pool recorded', e.pair_contract, meta.pool_id);
   } catch (err) {
     warn('[ch/pool]', err?.message || err);
+    return false;
   }
 }

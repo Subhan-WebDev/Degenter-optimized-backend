@@ -41,11 +41,11 @@ async function makeReader(stream, handler) {
     handler: async (records, { ackMany }) => {
       const ids = [];
       for (const rec of records) {
-        ids.push(rec.id);
         try {
           const obj = rec.map?.j ? JSON.parse(rec.map.j) : null;
-          if (!obj) continue;
-          await handler(obj);
+          if (!obj) { ids.push(rec.id); continue; }
+          const ok = await handler(obj);
+          if (ok !== false) ids.push(rec.id);
         } catch (e) {
           warn(`[${stream}] handler`, e?.message || e);
         }
