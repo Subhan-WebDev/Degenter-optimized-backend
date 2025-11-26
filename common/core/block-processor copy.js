@@ -111,7 +111,7 @@ export async function processHeight(h) {
       const signer = msgSenderByIndex.get(Number(cp.m.get('msg_index'))) || null;
 
       poolTasks.push(async () => {
-        await upsertPool({
+        const { pool_id } = await upsertPool({
           pairContract: poolAddr, baseDenom: base, quoteDenom: quote, pairType,
           createdAt: timestamp, height: h, txHash: tx_hash, signer
         });
@@ -123,7 +123,7 @@ export async function processHeight(h) {
         // 🔔 Fast-track notify for the new pair
         if (p) {
           await pgNotify('pair_created', {
-            pool_id: p.pool_id,
+            pool_id: p.pool_id || pool_id,
             pair_contract: poolAddr,
             base_denom: p.base_denom,
             quote_denom: p.quote_denom,
