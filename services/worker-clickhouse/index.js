@@ -6,11 +6,13 @@ process.env.SVC_NAME = process.env.SVC_NAME || 'worker-clickhouse';
 import { createRedisClient } from '../../common/redis-client.js';
 import { createConsumerGroup, readLoop } from '../../common/streams.js';
 import { info, warn, err } from '../../common/log.js';
+import { chPing, chInfo } from '../../common/db-clickhouse.js';
 
-import { handlePoolEvent } from './writers/pools.js';
+import { handlePoolEvent, flushPools } from './writers/pools.js';
 import { handleSwapEvent, handleLiquidityEvent, flushTrades } from './writers/trades.js';
 import { handlePriceSnapshot, flushPriceTicks } from './writers/prices.js';
 import { flushPoolState } from './writers/pool_state.js';
+import { initPoolResolver } from './pool_resolver.js';
 
 const STREAMS = {
   new_pool:  process.env.STREAM_NEW_POOL  || 'events:new_pool',
@@ -40,11 +42,11 @@ async function makeReader(stream, handler) {
     handler: async (records, { ackMany }) => {
       const ids = [];
       for (const rec of records) {
-        ids.push(rec.id);
         try {
           const obj = rec.map?.j ? JSON.parse(rec.map.j) : null;
-          if (!obj) continue;
-          await handler(obj);
+          if (!obj) { ids.push(rec.id); continue; }
+          const ok = await handler(obj);
+          if (ok !== false) ids.push(rec.id);
         } catch (e) {
           warn(`[${stream}] handler`, e?.message || e);
         }
@@ -56,6 +58,14 @@ async function makeReader(stream, handler) {
 
 async function main() {
   await redisConnect();
+  info('clickhouse config', chInfo());
+  try {
+    await chPing();
+  } catch (e) {
+    err('[clickhouse] ping failed', e?.message || e);
+    throw e;
+  }
+  initPoolResolver(redis);
 
   await Promise.all([
     makeReader(STREAMS.new_pool,  handlePoolEvent),
@@ -68,7 +78,7 @@ async function main() {
 }
 
 process.on('SIGINT', async () => {
-  await Promise.all([flushTrades(), flushPriceTicks(), flushPoolState()]);
+  await Promise.all([flushTrades(), flushPriceTicks(), flushPoolState(), flushPools()]);
   process.exit(0);
 });
 
