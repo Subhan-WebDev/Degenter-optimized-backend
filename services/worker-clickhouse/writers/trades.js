@@ -15,6 +15,8 @@ const tradesQueue = new BatchQueue({
 
 const RETRY_DELAY_MS = Number(process.env.CLICKHOUSE_META_RETRY_MS || 500);
 const MAX_META_RETRIES = Number(process.env.CLICKHOUSE_META_RETRIES || 120); // ~1 min default
+const TRADE_SEEN_MAX = Number(process.env.CLICKHOUSE_TRADE_SEEN_MAX || 100_000);
+const tradeSeen = new Set(); // process-level dedupe to avoid duplicate inserts
 
 function asDate(v) {
   if (!v) return new Date();
@@ -31,12 +33,22 @@ function nextTradeId(e) {
   const h = BigInt(e?.height || 0);
   const m = BigInt(e?.msg_index ?? 0);
   const ev = BigInt(e?.event_index ?? 0);
-  return (h * 1_000_000n + m * 100n + ev).toString();
+  const hashSuffix = BigInt(parseInt((e?.tx_hash || '').slice(-4), 16) || 0); // 0..65535
+  // Compose a stable UInt64: height * 1e9 + msg * 1e6 + event * 1e4 + hashSuffix
+  return (h * 1_000_000_000n + m * 1_000_000n + ev * 10_000n + hashSuffix).toString();
 }
 
 function bucketStart(ts) {
   const t = asDate(ts).getTime();
   return toChDateTime(Math.floor(t / 60000) * 60000);
+}
+
+function rememberTradeId(id) {
+  tradeSeen.add(id);
+  if (tradeSeen.size > TRADE_SEEN_MAX) {
+    const first = tradeSeen.values().next().value;
+    tradeSeen.delete(first);
+  }
 }
 
 function computePrice(meta, e) {
@@ -62,11 +74,13 @@ async function flushTradesBatch(events) {
   if (!events.length) return;
 
   const tradeRows = [];
-  const ohlcvRows = [];
+  const ohlcvAgg = new Map(); // key: `${pool_id}-${bucket_start}` -> aggregated ohlcv row
   let queuedForRetry = 0;
 
   for (const e of events) {
     try {
+      if (!e?.pair_contract) { warn('[ch/trade] missing pair_contract on event'); continue; }
+
       const meta = await getPoolMeta(e.pair_contract);
       if (!meta) {
         if ((e._metaRetries || 0) < MAX_META_RETRIES) {
@@ -82,9 +96,11 @@ async function flushTradesBatch(events) {
       }
 
       const direction = classifyDirection(e.offer_asset_denom, meta.quote_denom);
+      const tradeId = nextTradeId(e);
+      if (tradeSeen.has(tradeId)) continue;
 
       tradeRows.push({
-        trade_id: nextTradeId(e),
+        trade_id: tradeId,
         pool_id: meta.pool_id,
         pair_contract: e.pair_contract,
         action: e.action || 'swap',
@@ -126,17 +142,27 @@ async function flushTradesBatch(events) {
       if (price && Number.isFinite(price) && price > 0) {
         const volZig = computeVolumeZig(meta, e);
         const bucket = bucketStart(e.created_at);
-        ohlcvRows.push({
-          pool_id: meta.pool_id,
-          bucket_start: bucket,
-          open: price,
-          high: price,
-          low: price,
-          close: price,
-          volume_zig: volZig,
-          trade_count: 1,
-          liquidity_zig: '0'
-        });
+        const key = `${meta.pool_id}-${bucket}`;
+        const existing = ohlcvAgg.get(key);
+        if (existing) {
+          existing.high = Math.max(existing.high, price);
+          existing.low = Math.min(existing.low, price);
+          existing.close = price;
+          existing.volume_zig = (Number(existing.volume_zig) + Number(volZig)).toString();
+          existing.trade_count += 1;
+        } else {
+          ohlcvAgg.set(key, {
+            pool_id: meta.pool_id,
+            bucket_start: bucket,
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+            volume_zig: volZig,
+            trade_count: 1,
+            liquidity_zig: '0'
+          });
+        }
 
         pushTick({
           pool_id: meta.pool_id,
@@ -145,6 +171,8 @@ async function flushTradesBatch(events) {
           ts: toChDateTime(e.created_at)
         });
       }
+
+      rememberTradeId(tradeId);
     } catch (err) {
       warn('[ch/trade/flush]', err?.message || err);
     }
@@ -154,8 +182,19 @@ async function flushTradesBatch(events) {
     info('[ch/trade] queued for meta retry', { count: queuedForRetry });
   }
 
-  if (tradeRows.length) await chInsertJSON({ table: 'trades', rows: tradeRows });
-  if (ohlcvRows.length) await chInsertJSON({ table: 'ohlcv_1m', rows: ohlcvRows });
+  if (tradeRows.length) {
+    await chInsertJSON({
+      table: 'trades',
+      rows: tradeRows,
+      settings: { deduplicate_by_primary_key: 1 }
+    });
+  }
+  if (ohlcvAgg.size) {
+    await chInsertJSON({
+      table: 'ohlcv_1m',
+      rows: Array.from(ohlcvAgg.values())
+    });
+  }
 }
 
 export async function flushTrades() {
@@ -163,9 +202,11 @@ export async function flushTrades() {
 }
 
 export async function handleSwapEvent(e) {
+  if (!e?.pair_contract) { warn('[ch/swap] missing pair_contract on event'); return true; }
   tradesQueue.push({ ...e, action: 'swap' });
 }
 
 export async function handleLiquidityEvent(e) {
+  if (!e?.pair_contract) { warn('[ch/liq] missing pair_contract on event'); return true; }
   tradesQueue.push({ ...e, action: e.action || 'liquidity' });
 }

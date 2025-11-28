@@ -10,7 +10,11 @@ const priceQueue = new BatchQueue({
   maxWaitMs: Number(process.env.CLICKHOUSE_PRICE_FLUSH_MS || 2000),
   flushFn: async (items) => {
     if (items.length) {
-      await chInsertJSON({ table: 'price_ticks', rows: items });
+      await chInsertJSON({
+        table: 'price_ticks',
+        rows: items,
+        settings: { deduplicate_by_primary_key: 1 }
+      });
     }
   }
 });
@@ -25,6 +29,7 @@ export async function flushPriceTicks() {
 
 export async function handlePriceSnapshot(e) {
   if (e?.kind !== 'reserves_snapshot') return;
+  if (!e?.pair_contract) { warn('[ch/price] missing pair_contract on event'); return true; }
 
   try {
     const meta = await getPoolMeta(e.pair_contract);

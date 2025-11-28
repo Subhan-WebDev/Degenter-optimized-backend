@@ -57,7 +57,7 @@ function normalizeRows(rows) {
   return [];
 }
 
-export async function chInsertJSON({ table, rows, format = 'JSONEachRow' }) {
+export async function chInsertJSON({ table, rows, format = 'JSONEachRow', settings = {} }) {
   const normalized = normalizeRows(rows);
   if (!normalized.length) return;
   const started = Date.now();
@@ -66,6 +66,7 @@ export async function chInsertJSON({ table, rows, format = 'JSONEachRow' }) {
       table,
       values: normalized,
       format, // JSONEachRow
+      settings,
     });
     info('[clickhouse] insert', { table, rows: normalized.length, ms: Date.now() - started });
   } catch (e) {
